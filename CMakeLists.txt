@@ -304,3 +304,4 @@ install(TARGETS ${INSTALL_TARGETS}
    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}  # Static libraries
    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}  # Shared libraries
    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+add_subdirectory(examples/thermodynamic_optimization)
