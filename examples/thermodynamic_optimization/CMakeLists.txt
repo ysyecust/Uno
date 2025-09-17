@@ -23,6 +23,22 @@ target_link_libraries(minimal_test
     ${CMAKE_DL_LIBS}
 )
 
+# 教程示例
+add_executable(tutorial_example tutorial_example.cpp)
+target_link_libraries(tutorial_example
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../build/libuno.a
+    /opt/homebrew/Cellar/highs/1.11.0/lib/libhighs.dylib
+    ${CMAKE_DL_LIBS}
+)
+
+# 简化教程
+add_executable(simple_tutorial simple_tutorial.cpp)
+target_link_libraries(simple_tutorial
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../build/libuno.a
+    /opt/homebrew/Cellar/highs/1.11.0/lib/libhighs.dylib
+    ${CMAKE_DL_LIBS}
+)
+
 # 如果要编译 AMPL 外部函数库
 # 使用 C 而不是 C++ 来避免头文件冲突
 add_library(thermo_functions SHARED thermo_functions.c)

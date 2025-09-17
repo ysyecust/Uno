@@ -207,8 +207,27 @@ if(MUMPS_LIBRARY)
    find_package(BLAS REQUIRED)
    list(APPEND LIBRARIES ${BLAS_LIBRARIES})
 
-   find_package(OpenMP REQUIRED)
-   list(APPEND LIBRARIES OpenMP::OpenMP_CXX)
+   find_package(OpenMP)
+   if(OpenMP_FOUND)
+      list(APPEND LIBRARIES OpenMP::OpenMP_CXX)
+   else()
+      message(WARNING "OpenMP not found, MUMPS may have reduced performance")
+      # Add manual flags for Apple Clang
+      if(APPLE)
+         list(APPEND LIBRARIES /opt/homebrew/opt/libomp/lib/libomp.dylib)
+         include_directories(/opt/homebrew/opt/libomp/include)
+      endif()
+   endif()
+   
+   # Add Fortran runtime library for MUMPS
+   list(APPEND LIBRARIES /opt/homebrew/lib/gcc/current/libgfortran.dylib)
+   
+   # Add SCOTCH libraries for MUMPS (sequential version)
+   if(APPLE)
+      list(APPEND LIBRARIES /opt/homebrew/lib/libscotch.dylib)
+      list(APPEND LIBRARIES /opt/homebrew/lib/libscotcherr.dylib)
+      list(APPEND LIBRARIES /opt/homebrew/lib/libesmumps.dylib)
+   endif()
 
    add_definitions("-D HAS_MUMPS")
    message(STATUS "Found MUMPS")
