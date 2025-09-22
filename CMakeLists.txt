@@ -233,6 +233,29 @@ if(MUMPS_LIBRARY)
    message(STATUS "Found MUMPS")
 endif()
 
+########
+# Eigen #
+########
+find_package(Eigen3)
+if(Eigen3_FOUND)
+   message(STATUS "Found Eigen3 version ${EIGEN3_VERSION_STRING}")
+
+   # Add Eigen include directories
+   include_directories(${EIGEN3_INCLUDE_DIR})
+   list(APPEND DIRECTORIES ${EIGEN3_INCLUDE_DIR})
+
+   # Add Eigen solver source files
+   list(APPEND UNO_SOURCE_FILES
+      uno/ingredients/subproblem_solvers/EIGEN/EigenLinearSolver.cpp)
+
+   # Define preprocessor macro
+   add_definitions("-D HAS_EIGEN")
+
+   message(STATUS "Eigen linear solver enabled")
+else()
+   message(STATUS "Eigen3 not found, Eigen linear solver disabled")
+endif()
+
 ###############
 # Uno library #
 ###############

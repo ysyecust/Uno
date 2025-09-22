@@ -4,6 +4,8 @@
 #include "MUMPSSolver.hpp"
 #include "ingredients/subproblem/Subproblem.hpp"
 #include "optimization/Direction.hpp"
+#include "tools/Logger.hpp"
+#include <iostream>
 #if defined(HAS_MPI) && defined(MUMPS_PARALLEL)
 #include "mpi.h"
 #endif
@@ -79,10 +81,23 @@ namespace uno {
    void MUMPSSolver::do_numerical_factorization(const double* matrix_values) {
       assert(this->analysis_performed);
 
+      std::cout << "[MUMPS Solver] Performing numerical factorization with "
+                << this->workspace.nnz << " nonzeros\n";
+
       this->workspace.job = MUMPSSolver::JOB_FACTORIZATION;
       this->workspace.a = const_cast<double*>(matrix_values);
       dmumps_c(&this->workspace);
       this->factorization_performed = true;
+
+      // Report inertia after factorization
+      const Inertia inertia = this->get_inertia();
+      std::cout << "[MUMPS Solver] Inertia (pos/neg/zero) = ("
+                << inertia.positive << "/" << inertia.negative << "/" << inertia.zero << ")\n";
+
+      // Report if matrix is singular
+      if (this->matrix_is_singular()) {
+         std::cout << "[MUMPS Solver] Warning: Matrix is singular (has " << inertia.zero << " zero eigenvalues)\n";
+      }
    }
 
    void MUMPSSolver::solve_indefinite_system(const Vector<double>& /*matrix_values*/, const Vector<double>& rhs, Vector<double>& result) {

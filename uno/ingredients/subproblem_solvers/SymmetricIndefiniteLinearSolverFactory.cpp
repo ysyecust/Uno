@@ -27,6 +27,10 @@ namespace uno {
 #include "ingredients/subproblem_solvers/MUMPS/MUMPSSolver.hpp"
 #endif
 
+#ifdef HAS_EIGEN
+#include "ingredients/subproblem_solvers/EIGEN/EigenLinearSolver.hpp"
+#endif
+
 namespace uno {
    std::unique_ptr<DirectSymmetricIndefiniteLinearSolver<double>> SymmetricIndefiniteLinearSolverFactory::create(const std::string& linear_solver) {
 #if defined(HAS_HSL) || defined(HAS_MA57)
@@ -54,6 +58,13 @@ namespace uno {
          return std::make_unique<MUMPSSolver>();
       }
 #endif
+
+#ifdef HAS_EIGEN
+      if (linear_solver == "EIGEN") {
+         return std::make_unique<EigenLinearSolver>();
+      }
+#endif
+
       std::string message = "The linear solver ";
       message.append(linear_solver).append(" is unknown").append("\n").append("The following values are available: ")
             .append(join(SymmetricIndefiniteLinearSolverFactory::available_solvers(), ", "));
@@ -80,6 +91,11 @@ namespace uno {
 #ifdef HAS_MUMPS
       solvers.emplace_back("MUMPS");
 #endif
+
+#ifdef HAS_EIGEN
+      solvers.emplace_back("EIGEN");
+#endif
+
       return solvers;
    }
 } // namespace
