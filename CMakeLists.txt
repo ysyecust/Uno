@@ -1,4 +1,4 @@
-﻿# Copyright (c) 2018-2024 Charlie Vanaret
+﻿# Copyright (c) 2018-2025 Charlie Vanaret
 # Licensed under the MIT license. See LICENSE file in the project directory for details.
 
 cmake_minimum_required(VERSION 3.7)
@@ -11,7 +11,7 @@ endif()
 ######################
 
 # define the project
-project(Uno VERSION 2.0.3
+project(Uno VERSION 2.2.0
         DESCRIPTION "Uno (Unifying Nonlinear Optimization)"
         LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
@@ -21,7 +21,7 @@ if (MSVC)
    add_compile_options("$<$<COMPILE_LANGUAGE:C>:/utf-8>")
    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/utf-8>")
    # https://github.com/google/googletest/tree/main/googletest#visual-studio-dynamic-vs-static-runtimes
-	set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 else()
    set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wnon-virtual-dtor -pedantic -Wunused-value -Wconversion")
    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG") # disable asserts
@@ -49,8 +49,8 @@ if(HSL OR MA57 OR MA27 OR BQPD)
    enable_language(Fortran)
    include(FortranCInterface)
    FortranCInterface_HEADER(${CMAKE_BINARY_DIR}/include/fortran_interface.h
-      MACRO_NAMESPACE "FC_"
-      SYMBOL_NAMESPACE "FC_")
+           MACRO_NAMESPACE "FC_"
+           SYMBOL_NAMESPACE "FC_")
 endif()
 
 # directories
@@ -77,6 +77,7 @@ file(GLOB UNO_SOURCE_FILES
    uno/optimization/*.cpp
    uno/options/*.cpp
    uno/tools/*.cpp
+   bindings/C/Uno_C_API.cpp
 )
 
 # unit test source files
@@ -151,8 +152,8 @@ endif()
 find_library(BQPD bqpd)
 if(BQPD)
    list(APPEND UNO_SOURCE_FILES
-		uno/ingredients/subproblem_solvers/BQPD/BQPDSolver.cpp
-		uno/ingredients/subproblem_solvers/BQPD/BQPDEvaluationSpace.cpp)
+           uno/ingredients/subproblem_solvers/BQPD/BQPDSolver.cpp
+           uno/ingredients/subproblem_solvers/BQPD/BQPDEvaluationSpace.cpp)
    list(APPEND TESTS_UNO_SOURCE_FILES unotest/functional_tests/BQPDSolverTests.cpp)
    link_to_uno(bqpd ${BQPD})
 endif()
@@ -161,8 +162,8 @@ endif()
 find_package(HIGHS)
 if(HIGHS_FOUND)
    list(APPEND UNO_SOURCE_FILES
-		uno/ingredients/subproblem_solvers/HiGHS/HiGHSSolver.cpp
-		uno/ingredients/subproblem_solvers/HiGHS/HiGHSEvaluationSpace.cpp)
+           uno/ingredients/subproblem_solvers/HiGHS/HiGHSSolver.cpp
+           uno/ingredients/subproblem_solvers/HiGHS/HiGHSEvaluationSpace.cpp)
    list(APPEND TESTS_UNO_SOURCE_FILES unotest/functional_tests/HiGHSSolverTests.cpp)
    list(APPEND LIBRARIES highs::highs)
    add_definitions("-D HAS_HIGHS")
@@ -268,30 +269,32 @@ if(APPLE)
 endif()
 
 # compile the Uno source files once, whatever the compilation type is (static or shared)
-add_library(uno_files OBJECT ${UNO_SOURCE_FILES})
-set_property(TARGET uno_files PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_include_directories(uno_files PUBLIC ${DIRECTORIES})
-target_link_libraries(uno_files PUBLIC ${LIBRARIES} ${FORTRAN_LIBS})
+add_library(compiled_uno_files OBJECT ${UNO_SOURCE_FILES})
+set_property(TARGET compiled_uno_files PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_include_directories(compiled_uno_files PUBLIC ${DIRECTORIES})
+target_link_libraries(compiled_uno_files PUBLIC ${LIBRARIES} ${FORTRAN_LIBS})
 
 if(BUILD_STATIC_LIBS)
-   add_library(uno_static STATIC $<TARGET_OBJECTS:uno_files>)
+   add_library(uno_static STATIC $<TARGET_OBJECTS:compiled_uno_files>)
    target_include_directories(uno_static PUBLIC ${DIRECTORIES})
    target_link_libraries(uno_static PUBLIC ${LIBRARIES} ${FORTRAN_LIBS})
    set_target_properties(uno_static PROPERTIES OUTPUT_NAME "uno" POSITION_INDEPENDENT_CODE ON)
+   set_target_properties(uno_static PROPERTIES PUBLIC_HEADER "bindings/C/Uno_C_API.h")
 endif()
 
 if(BUILD_SHARED_LIBS)
-   add_library(uno_shared SHARED $<TARGET_OBJECTS:uno_files>)
+   add_library(uno_shared SHARED $<TARGET_OBJECTS:compiled_uno_files>)
    target_include_directories(uno_shared PUBLIC ${DIRECTORIES})
    target_link_libraries(uno_shared PUBLIC ${LIBRARIES} ${FORTRAN_LIBS})
    set_target_properties(uno_shared PROPERTIES OUTPUT_NAME "uno")
+   set_target_properties(uno_shared PROPERTIES PUBLIC_HEADER "bindings/C/Uno_C_API.h")
 endif()
 
 if(BUILD_STATIC_LIBS)
    # by default, the target to install is the static library
    set(DEFAULT_UNO_LIB uno_static)
    if (MSVC)
-         add_compile_options(/MT)
+      add_compile_options(/MT)
    endif()
 else()
    set(DEFAULT_UNO_LIB uno_shared)
@@ -312,18 +315,42 @@ if(AMPLSOLVER)
    include_directories(${directory})
 endif()
 
+############################
+# optional Python bindings #
+############################
+
+set(PYBIND11_FINDPYTHON ON)
+find_package(pybind11)
+if(pybind11_DIR)
+   # link-time optimization
+   if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto=auto")
+   endif()
+   
+   file(GLOB PYTHON_MODULE_FILES
+      bindings/Python/cpp_classes/*.cpp
+      bindings/Python/python_modules/*.cpp
+      bindings/Python/unopy.cpp
+   )
+
+   add_definitions("-D PYBIND11_DETAILED_ERROR_MESSAGES")
+   pybind11_add_module(unopy SHARED EXCLUDE_FROM_ALL $<TARGET_OBJECTS:compiled_uno_files> ${PYTHON_MODULE_FILES})
+   target_link_libraries(unopy PUBLIC ${LIBRARIES} ${FORTRAN_LIBS})
+   target_include_directories(unopy PUBLIC ${DIRECTORIES})
+endif()
+
 ##################################
 # optional GoogleTest unit tests #
 ##################################
 find_package(GTest CONFIG)
 if(GTest_DIR)
-	message(STATUS "Found GoogleTest")
+   message(STATUS "Found GoogleTest")
    add_executable(run_unotest EXCLUDE_FROM_ALL ${TESTS_UNO_SOURCE_FILES})
    target_include_directories(run_unotest PUBLIC ${DIRECTORIES} ${GTEST_INCLUDE_DIR})
    target_link_libraries(run_unotest PUBLIC GTest::gtest ${DEFAULT_UNO_LIB} ${LIBRARIES})
    if (MSVC)
       set_target_properties(run_unotest PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-	endif()
+   endif()
 endif()
 
 #########################################
@@ -338,6 +365,9 @@ if(TARGET uno_shared)
 endif()
 if(TARGET uno_ampl)
    list(APPEND INSTALL_TARGETS uno_ampl)
+endif()
+if(TARGET unopy)
+   list(APPEND INSTALL_TARGETS unopy)
 endif()
 install(TARGETS ${INSTALL_TARGETS}
    COMPONENT libuno

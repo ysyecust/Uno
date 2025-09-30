@@ -4,7 +4,6 @@
 #ifndef UNO_FIXEDBOUNDSCONSTRAINTSMODEL_H
 #define UNO_FIXEDBOUNDSCONSTRAINTSMODEL_H
 
-#include <memory>
 #include "Model.hpp"
 #include "linear_algebra/Vector.hpp"
 #include "symbolic/Concatenation.hpp"
@@ -19,7 +18,7 @@ namespace uno {
    // linear constraint 0 x[1] + 1 x[2] + ... + 0 x[n] == 1
    class FixedBoundsConstraintsModel: public Model {
    public:
-      FixedBoundsConstraintsModel(std::unique_ptr<Model> original_model, const Options& options);
+      explicit FixedBoundsConstraintsModel(const Model& original_model);
 
       // availability of linear operators
       [[nodiscard]] bool has_jacobian_operator() const override;
@@ -29,7 +28,7 @@ namespace uno {
 
       // function evaluations
       [[nodiscard]] double evaluate_objective(const Vector<double>& x) const override;
-      void evaluate_constraints(const Vector<double>& x, std::vector<double>& constraints) const override;
+      void evaluate_constraints(const Vector<double>& x, Vector<double>& constraints) const override;
 
       // dense objective gradient
       void evaluate_objective_gradient(const Vector<double>& x, Vector<double>& gradient) const override;
@@ -43,6 +42,10 @@ namespace uno {
       void evaluate_constraint_jacobian(const Vector<double>& x, double* jacobian_values) const override;
       void evaluate_lagrangian_hessian(const Vector<double>& x, double objective_multiplier, const Vector<double>& multipliers,
          double* hessian_values) const override;
+
+      // linear operators for Jacobian-, Jacobian^T-, and Hessian-vector products
+      void compute_jacobian_vector_product(const double* x, const double* vector, double* result) const override;
+      void compute_jacobian_transposed_vector_product(const double* x, const double* vector, double* result) const override;
       void compute_hessian_vector_product(const double* x, const double* vector, double objective_multiplier,
          const Vector<double>& multipliers, double* result) const override;
 
@@ -60,13 +63,13 @@ namespace uno {
       void initial_primal_point(Vector<double>& x) const override;
       void initial_dual_point(Vector<double>& multipliers) const override;
 
-      void postprocess_solution(Iterate& iterate, IterateStatus termination_status) const override;
+      void postprocess_solution(Iterate& iterate) const override;
 
       [[nodiscard]] size_t number_jacobian_nonzeros() const override;
       [[nodiscard]] size_t number_hessian_nonzeros() const override;
 
    private:
-      const std::unique_ptr<Model> model{};
+      const Model& model;
       Vector<size_t> fixed_variables{};
       Concatenation<const Collection<size_t>&, ForwardRange> equality_constraints;
       Concatenation<const Collection<size_t>&, ForwardRange> linear_constraints;

@@ -33,18 +33,18 @@ namespace uno {
 
       // set the sign convention for the Lagrangian: Uno uses ∇²L(x, y) = ∇²f(x) - \sum_j y_j ∇²c_j(x)
       fint error_flag{0};
-      lagscale_ASL(asl, -1., &error_flag);
+      lagscale_ASL(asl, AMPLModel::lagrangian_sign_convention, &error_flag);
       return asl;
    }
 
    // generate the ASL object and call the private constructor
-   AMPLModel::AMPLModel(const std::string& file_name, const Options& options) : AMPLModel(file_name, generate_asl(file_name), options) {
+   AMPLModel::AMPLModel(const std::string& file_name) : AMPLModel(file_name, generate_asl(file_name)) {
    }
 
-   AMPLModel::AMPLModel(const std::string& file_name, ASL* asl, const Options& options) :
-         Model(file_name, static_cast<size_t>(asl->i.n_var_), static_cast<size_t>(asl->i.n_con_), (asl->i.objtype_[0] == 1) ? -1. : 1.),
+   AMPLModel::AMPLModel(const std::string& file_name, ASL* asl) :
+         Model(file_name, static_cast<size_t>(asl->i.n_var_), static_cast<size_t>(asl->i.n_con_),
+            (asl->i.objtype_[0] == 1) ? -1. : 1. /* optimization sense */),
          asl(asl),
-         write_solution_to_file(options.get_bool("AMPL_write_solution_to_file")),
          // AMPL orders the constraints based on the function type: nonlinear first (nlc of them), then linear
          linear_constraints(static_cast<size_t>(this->asl->i.nlc_), this->number_constraints),
          equality_constraints_collection(this->equality_constraints),
@@ -53,13 +53,10 @@ namespace uno {
       this->asl->i.congrd_mode = 2;
 
       // detect fix variables
-      this->fixed_variables.reserve(this->number_variables);
-      this->find_fixed_variables();
+      Model::find_fixed_variables(this->fixed_variables);
 
       // partition equality/inequality constraints
-      this->equality_constraints.reserve(this->number_constraints);
-      this->inequality_constraints.reserve(this->number_constraints);
-      this->partition_constraints();
+      Model::partition_constraints(this->equality_constraints, this->inequality_constraints);
 
       // compute sparsity pattern and number of nonzeros of Lagrangian Hessian
       this->compute_lagrangian_hessian_sparsity();
@@ -68,7 +65,7 @@ namespace uno {
    AMPLModel::~AMPLModel() {
       ASL_free(&this->asl);
    }
-
+   
    bool AMPLModel::has_jacobian_operator() const {
       return false;
    }
@@ -90,7 +87,7 @@ namespace uno {
 
    double AMPLModel::evaluate_objective(const Vector<double>& x) const {
       fint error_flag = 0;
-      const double result = this->objective_sign * (*(this->asl)->p.Objval)(this->asl, 0, const_cast<double*>(x.data()), &error_flag);
+      const double result = this->optimization_sense * (*(this->asl)->p.Objval)(this->asl, 0, const_cast<double*>(x.data()), &error_flag);
       if (0 < error_flag) {
          throw FunctionEvaluationError();
       }
@@ -108,7 +105,7 @@ namespace uno {
    }
    */
 
-   void AMPLModel::evaluate_constraints(const Vector<double>& x, std::vector<double>& constraints) const {
+   void AMPLModel::evaluate_constraints(const Vector<double>& x, Vector<double>& constraints) const {
       fint error_flag = 0;
       (*(this->asl)->p.Conval)(this->asl, const_cast<double*>(x.data()), constraints.data(), &error_flag);
       if (0 < error_flag) {
@@ -123,7 +120,7 @@ namespace uno {
       if (0 < error_flag) {
          throw GradientEvaluationError();
       }
-      gradient.scale(this->objective_sign);
+      gradient.scale(this->optimization_sense);
    }
 
    void AMPLModel::compute_constraint_jacobian_sparsity(int* row_indices, int* column_indices, int solver_indexing,
@@ -183,15 +180,23 @@ namespace uno {
 
    void AMPLModel::evaluate_lagrangian_hessian(const Vector<double>& /*x*/, double objective_multiplier, const Vector<double>& multipliers,
          double* hessian_values) const {
-      objective_multiplier *= this->objective_sign;
+      objective_multiplier *= this->optimization_sense;
       (*(this->asl)->p.Sphes)(this->asl, nullptr, hessian_values, -1, &objective_multiplier,
          const_cast<double*>(multipliers.data()));
+   }
+
+   void AMPLModel::compute_jacobian_vector_product(const double* /*x*/, const double* /*vector*/, double* /*result*/) const {
+      throw std::runtime_error("AMPLModel::compute_jacobian_vector_product not implemented");
+   }
+
+   void AMPLModel::compute_jacobian_transposed_vector_product(const double* /*x*/, const double* /*vector*/, double* /*result*/) const {
+      throw std::runtime_error("AMPLModel::compute_jacobian_transposed_vector_product not implemented");
    }
 
    void AMPLModel::compute_hessian_vector_product(const double* /*x*/, const double* vector, double objective_multiplier,
          const Vector<double>& multipliers, double* result) const {
       // scale by the objective sign
-      objective_multiplier *= this->objective_sign;
+      objective_multiplier *= this->optimization_sense;
 
       // compute the Hessian-vector product
       (this->asl->p.Hvcomp)(this->asl, result, const_cast<double*>(vector), -1, &objective_multiplier,
@@ -246,54 +251,54 @@ namespace uno {
       std::copy_n(this->asl->i.pi0_, this->number_constraints, multipliers.begin());
    }
 
-   void AMPLModel::postprocess_solution(Iterate& iterate, IterateStatus iterate_status) const {
-      if (this->write_solution_to_file) {
-         // write the primal-dual solution and status into a *.sol file
-         this->asl->p.solve_code_ = 400; // limit
-         if (iterate_status == IterateStatus::FEASIBLE_KKT_POINT) {
-            this->asl->p.solve_code_ = 0;
-         }
-         if (iterate_status == IterateStatus::FEASIBLE_SMALL_STEP) {
-            this->asl->p.solve_code_ = 100;
-         }
-         else if (iterate_status == IterateStatus::INFEASIBLE_STATIONARY_POINT) {
-            this->asl->p.solve_code_ = 200;
-         }
-         else if (iterate_status == IterateStatus::UNBOUNDED) {
-            this->asl->p.solve_code_ = 300;
-         }
-         else if (iterate_status == IterateStatus::INFEASIBLE_SMALL_STEP) {
-            this->asl->p.solve_code_ = 500;
-         }
+   void AMPLModel::postprocess_solution(Iterate& /*iterate*/) const {
+      // do nothing
+   }
 
-         // flip the signs of the multipliers and the objective if we maximize
-         // note: due to the different sign convention for the Lagrangian between ASL and Uno,
-         // we need to flip the signs of the constraint multipliers when minimizing
-         iterate.multipliers.constraints *= -this->objective_sign;
-         iterate.multipliers.lower_bounds *= this->objective_sign;
-         iterate.multipliers.upper_bounds *= this->objective_sign;
-         iterate.evaluations.objective *= this->objective_sign;
-
-         // include the bound duals in the .sol file, using suffixes
-         SufDecl lower_bound_suffix{const_cast<char*>("lower_bound_duals"), nullptr, ASL_Sufkind_var | ASL_Sufkind_real, 0};
-         SufDecl upper_bound_suffix{const_cast<char*>("upper_bound_duals"), nullptr, ASL_Sufkind_var | ASL_Sufkind_real, 0};
-         std::array<SufDecl, 2> suffixes{lower_bound_suffix, upper_bound_suffix};
-         suf_declare_ASL(this->asl, suffixes.data(), suffixes.size());
-         suf_rput_ASL(this->asl, "lower_bound_duals", ASL_Sufkind_var, iterate.multipliers.lower_bounds.data());
-         suf_rput_ASL(this->asl, "upper_bound_duals", ASL_Sufkind_var, iterate.multipliers.upper_bounds.data());
-
-         Option_Info option_info{};
-         option_info.wantsol = 9; // write the solution without printing the message to stdout
-         std::string message = "Uno ";
-         message.append(Uno::current_version()).append(": ").append(iterate_status_to_message(iterate_status));
-         write_sol_ASL(this->asl, message.data(), iterate.primals.data(), iterate.multipliers.constraints.data(), &option_info);
-
-         // flip back the signs of the multipliers and the objective back if we maximize
-         iterate.multipliers.constraints *= -this->objective_sign;
-         iterate.multipliers.lower_bounds *= this->objective_sign;
-         iterate.multipliers.upper_bounds *= this->objective_sign;
-         iterate.evaluations.objective *= this->objective_sign;
+   void AMPLModel::write_solution_to_file(Result& result) const {
+      // write the primal-dual solution and status into a *.sol file
+      this->asl->p.solve_code_ = 400; // limit
+      if (result.solution_status == SolutionStatus::FEASIBLE_KKT_POINT) {
+         this->asl->p.solve_code_ = 0;
       }
+      if (result.solution_status == SolutionStatus::FEASIBLE_SMALL_STEP) {
+         this->asl->p.solve_code_ = 100;
+      }
+      else if (result.solution_status == SolutionStatus::INFEASIBLE_STATIONARY_POINT) {
+         this->asl->p.solve_code_ = 200;
+      }
+      else if (result.solution_status == SolutionStatus::UNBOUNDED) {
+         this->asl->p.solve_code_ = 300;
+      }
+      else if (result.solution_status == SolutionStatus::INFEASIBLE_SMALL_STEP) {
+         this->asl->p.solve_code_ = 500;
+      }
+
+      // flip the signs of the multipliers and the objective if we maximize
+      // note: due to the different sign convention for the Lagrangian between ASL and Uno,
+      // we need to flip the signs of the constraint multipliers when minimizing
+      result.constraint_dual_solution *= -this->optimization_sense;
+      result.lower_bound_dual_solution *= this->optimization_sense;
+      result.upper_bound_dual_solution *= this->optimization_sense;
+
+      // include the bound duals in the .sol file, using suffixes
+      SufDecl lower_bound_suffix{const_cast<char*>("lower_bound_duals"), nullptr, ASL_Sufkind_var | ASL_Sufkind_real, 0};
+      SufDecl upper_bound_suffix{const_cast<char*>("upper_bound_duals"), nullptr, ASL_Sufkind_var | ASL_Sufkind_real, 0};
+      std::array<SufDecl, 2> suffixes{lower_bound_suffix, upper_bound_suffix};
+      suf_declare_ASL(this->asl, suffixes.data(), suffixes.size());
+      suf_rput_ASL(this->asl, "lower_bound_duals", ASL_Sufkind_var, result.lower_bound_dual_solution.data());
+      suf_rput_ASL(this->asl, "upper_bound_duals", ASL_Sufkind_var, result.upper_bound_dual_solution.data());
+
+      Option_Info option_info{};
+      option_info.wantsol = 9; // write the solution without printing the message to stdout
+      std::string message = "Uno ";
+      message.append(Uno::current_version()).append(": ").append(solution_status_to_message(result.solution_status));
+      write_sol_ASL(this->asl, message.data(), result.primal_solution.data(), result.constraint_dual_solution.data(), &option_info);
+
+      // flip back the signs of the multipliers and the objective back if we maximize
+      result.constraint_dual_solution *= -this->optimization_sense;
+      result.lower_bound_dual_solution *= this->optimization_sense;
+      result.upper_bound_dual_solution *= this->optimization_sense;
    }
 
    size_t AMPLModel::number_jacobian_nonzeros() const {
@@ -302,33 +307,6 @@ namespace uno {
 
    size_t AMPLModel::number_hessian_nonzeros() const {
       return this->number_asl_hessian_nonzeros;
-   }
-
-   void AMPLModel::find_fixed_variables() {
-      for (size_t variable_index: Range(this->number_variables)) {
-         if (this->variable_lower_bound(variable_index) == this->variable_upper_bound(variable_index)) {
-            WARNING << "Variable x" << variable_index << " has identical bounds\n";
-            this->fixed_variables.emplace_back(variable_index);
-         }
-      }
-   }
-
-   void AMPLModel::partition_constraints() {
-      for (size_t constraint_index: Range(this->number_constraints)) {
-         const double lower_bound = this->constraint_lower_bound(constraint_index);
-         const double upper_bound = this->constraint_upper_bound(constraint_index);
-         if (lower_bound == upper_bound) {
-            this->equality_constraints.emplace_back(constraint_index);
-         }
-         else if (!is_finite(lower_bound) && !is_finite(upper_bound)) {
-            WARNING << "Constraint c" << constraint_index << " has no bounds\n";
-            // count the constraint as inequality to avoid reindexing of the constraints
-            this->inequality_constraints.emplace_back(constraint_index);
-         }
-         else {
-            this->inequality_constraints.emplace_back(constraint_index);
-         }
-      }
    }
 
    void AMPLModel::compute_lagrangian_hessian_sparsity() {
