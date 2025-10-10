@@ -1,0 +1,124 @@
+@startuml uno_usecase_diagram
+!theme plain
+skinparam actorStyle awesome
+
+left to right direction
+
+actor "优化用户" as User
+actor "研究人员" as Researcher
+actor "开发者" as Developer
+actor "系统管理员" as Admin
+
+rectangle "UNO 优化系统" {
+
+    package "基本功能" {
+        usecase "求解优化问题" as UC_Solve
+        usecase "加载AMPL模型" as UC_Load
+        usecase "设置参数" as UC_Config
+        usecase "查看结果" as UC_Result
+        usecase "导出解" as UC_Export
+    }
+
+    package "高级功能" {
+        usecase "选择算法" as UC_Algorithm
+        usecase "选择线性求解器" as UC_LinSolver
+        usecase "配置正则化策略" as UC_Regularization
+        usecase "设置全局化方法" as UC_Globalization
+        usecase "使用预设配置" as UC_Preset
+        usecase "启用调试输出" as UC_Debug
+    }
+
+    package "算法选项" {
+        usecase "内点法" as UC_IPM
+        usecase "SQP方法" as UC_SQP
+        usecase "信赖域法" as UC_TR
+        usecase "滤波器方法" as UC_Filter
+    }
+
+    package "求解器选项" {
+        usecase "使用MUMPS" as UC_MUMPS
+        usecase "使用MA27/MA57" as UC_MA
+        usecase "使用Eigen" as UC_Eigen
+        usecase "使用HiGHS" as UC_HiGHS
+    }
+
+    package "分析功能" {
+        usecase "性能分析" as UC_Performance
+        usecase "收敛分析" as UC_Convergence
+        usecase "惯性分析" as UC_Inertia
+        usecase "数值稳定性分析" as UC_Stability
+    }
+
+    package "开发功能" {
+        usecase "添加新算法" as UC_AddAlgo
+        usecase "集成新求解器" as UC_AddSolver
+        usecase "扩展模型接口" as UC_ExtendModel
+        usecase "自定义组件" as UC_CustomComponent
+    }
+
+    package "管理功能" {
+        usecase "配置系统" as UC_SysConfig
+        usecase "管理许可证" as UC_License
+        usecase "监控性能" as UC_Monitor
+        usecase "维护日志" as UC_Log
+    }
+
+}
+
+' 用户关系
+User --> UC_Solve
+User --> UC_Load
+User --> UC_Config
+User --> UC_Result
+User --> UC_Export
+
+' 研究人员关系
+Researcher --> UC_Algorithm
+Researcher --> UC_LinSolver
+Researcher --> UC_Regularization
+Researcher --> UC_Globalization
+Researcher --> UC_Preset
+Researcher --> UC_Debug
+Researcher --> UC_Performance
+Researcher --> UC_Convergence
+Researcher --> UC_Inertia
+Researcher --> UC_Stability
+
+' 开发者关系
+Developer --> UC_AddAlgo
+Developer --> UC_AddSolver
+Developer --> UC_ExtendModel
+Developer --> UC_CustomComponent
+
+' 管理员关系
+Admin --> UC_SysConfig
+Admin --> UC_License
+Admin --> UC_Monitor
+Admin --> UC_Log
+
+' 包含关系
+UC_Solve ..> UC_Load : <<include>>
+UC_Solve ..> UC_Algorithm : <<include>>
+UC_Solve ..> UC_LinSolver : <<include>>
+
+UC_Algorithm ..> UC_IPM : <<extend>>
+UC_Algorithm ..> UC_SQP : <<extend>>
+UC_Algorithm ..> UC_TR : <<extend>>
+UC_Algorithm ..> UC_Filter : <<extend>>
+
+UC_LinSolver ..> UC_MUMPS : <<extend>>
+UC_LinSolver ..> UC_MA : <<extend>>
+UC_LinSolver ..> UC_Eigen : <<extend>>
+UC_LinSolver ..> UC_HiGHS : <<extend>>
+
+UC_Config ..> UC_Preset : <<extend>>
+UC_Config ..> UC_Regularization : <<extend>>
+UC_Config ..> UC_Globalization : <<extend>>
+
+UC_Result ..> UC_Performance : <<extend>>
+UC_Result ..> UC_Convergence : <<extend>>
+
+UC_Debug ..> UC_Inertia : <<extend>>
+UC_Debug ..> UC_Stability : <<extend>>
+
+@enduml

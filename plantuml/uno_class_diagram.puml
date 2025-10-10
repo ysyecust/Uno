@@ -1,0 +1,192 @@
+@startuml uno_class_diagram
+!theme plain
+skinparam classAttributeIconSize 0
+
+package "Core Classes" {
+
+    abstract class OptimizationAlgorithm {
+        # model: Model&
+        # options: Options&
+        + solve(initial_iterate: Iterate): Result
+        + {abstract} compute_search_direction(): Direction
+        + {abstract} globalize_step(): void
+    }
+
+    class InteriorPointMethod {
+        - barrier_parameter: double
+        - filter: Filter
+        + solve(initial_iterate: Iterate): Result
+        + compute_search_direction(): Direction
+        + update_barrier_parameter(): void
+    }
+
+    class SequentialQuadraticProgramming {
+        - merit_function: MeritFunction
+        + solve(initial_iterate: Iterate): Result
+        + compute_search_direction(): Direction
+        + update_penalty_parameter(): void
+    }
+
+    class TrustRegionMethod {
+        - trust_region_radius: double
+        - subproblem_solver: QPSolver
+        + solve(initial_iterate: Iterate): Result
+        + compute_search_direction(): Direction
+        + update_trust_region(): void
+    }
+
+    OptimizationAlgorithm <|-- InteriorPointMethod
+    OptimizationAlgorithm <|-- SequentialQuadraticProgramming
+    OptimizationAlgorithm <|-- TrustRegionMethod
+
+}
+
+package "Problem Representation" {
+
+    abstract class Model {
+        + number_variables: size_t
+        + number_constraints: size_t
+        + {abstract} evaluate_objective(x: Vector): double
+        + {abstract} evaluate_constraints(x: Vector): Vector
+        + {abstract} evaluate_objective_gradient(x: Vector): Vector
+        + {abstract} evaluate_constraint_jacobian(x: Vector): SparseMatrix
+        + {abstract} evaluate_lagrangian_hessian(x: Vector, λ: Vector): SparseMatrix
+        + has_fixed_variables(): bool
+        + get_variable_bounds(): Bounds
+    }
+
+    class AMPLModel {
+        - asl: ASL*
+        - problem_name: string
+        + read_from_file(filename: string): void
+        + evaluate_objective(x: Vector): double
+        + evaluate_constraints(x: Vector): Vector
+    }
+
+    class Iterate {
+        + primals: Vector
+        + multipliers: Multipliers
+        + slacks: Vector
+        + objective_value: double
+        + constraint_values: Vector
+        + is_feasible(): bool
+        + is_optimal(): bool
+    }
+
+    class Direction {
+        + primals: Vector
+        + multipliers: Multipliers
+        + slacks: Vector
+        + status: SubproblemStatus
+        + norm(): double
+    }
+
+    Model <|-- AMPLModel
+
+}
+
+package "Linear Solvers" {
+
+    abstract class DirectSymmetricIndefiniteLinearSolver {
+        # evaluation_space: EvaluationSpace
+        # factorization_performed: bool
+        + {abstract} do_symbolic_analysis(): void
+        + {abstract} do_numerical_factorization(values: double*): void
+        + {abstract} solve_system(rhs: Vector, solution: Vector): void
+        + {abstract} get_inertia(): Inertia
+        + {abstract} matrix_is_singular(): bool
+    }
+
+    class MUMPSSolver {
+        - workspace: MUMPS_STRUC_C
+        + do_symbolic_analysis(): void
+        + do_numerical_factorization(values: double*): void
+        + solve_system(rhs: Vector, solution: Vector): void
+        + get_inertia(): Inertia
+    }
+
+    class MA57Solver {
+        - workspace: MA57Workspace
+        + do_symbolic_analysis(): void
+        + do_numerical_factorization(values: double*): void
+        + solve_system(rhs: Vector, solution: Vector): void
+        + get_inertia(): Inertia
+    }
+
+    class EigenLinearSolver {
+        - ldlt_solver: SimplicialLDLT
+        - lu_solver: SparseLU
+        - qr_solver: SparseQR
+        + do_symbolic_analysis(): void
+        + do_numerical_factorization(values: double*): void
+        + solve_system(rhs: Vector, solution: Vector): void
+        + get_inertia(): Inertia
+    }
+
+    DirectSymmetricIndefiniteLinearSolver <|-- MUMPSSolver
+    DirectSymmetricIndefiniteLinearSolver <|-- MA57Solver
+    DirectSymmetricIndefiniteLinearSolver <|-- EigenLinearSolver
+
+}
+
+package "Globalization" {
+
+    abstract class GlobalizationMechanism {
+        + {abstract} compute_acceptable_step(): double
+        + {abstract} is_step_acceptable(): bool
+    }
+
+    class LineSearch {
+        - armijo_coefficient: double
+        - wolfe_coefficient: double
+        + compute_acceptable_step(): double
+        + backtracking_line_search(): double
+    }
+
+    class TrustRegion {
+        - radius: double
+        - max_radius: double
+        + compute_acceptable_step(): double
+        + update_radius(ratio: double): void
+    }
+
+    class Filter {
+        - filter_pairs: list<FilterEntry>
+        + is_acceptable(h: double, f: double): bool
+        + add_to_filter(h: double, f: double): void
+    }
+
+    GlobalizationMechanism <|-- LineSearch
+    GlobalizationMechanism <|-- TrustRegion
+    GlobalizationMechanism <|-- Filter
+
+}
+
+package "Ingredients" {
+
+    class RegularizationStrategy {
+        + compute_primal_regularization(): double
+        + compute_dual_regularization(): double
+        + update_regularization(): void
+    }
+
+    class HessianModel {
+        + evaluate(x: Vector, λ: Vector): SparseMatrix
+        + update(s: Vector, y: Vector): void
+    }
+
+    class ConstraintRelaxation {
+        + relax_bounds(model: Model): Model
+        + restore_bounds(model: Model): void
+    }
+
+}
+
+OptimizationAlgorithm --> Model
+OptimizationAlgorithm --> GlobalizationMechanism
+OptimizationAlgorithm --> DirectSymmetricIndefiniteLinearSolver
+OptimizationAlgorithm --> RegularizationStrategy
+OptimizationAlgorithm --> HessianModel
+InteriorPointMethod --> Filter
+
+@enduml

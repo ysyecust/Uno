@@ -1,0 +1,157 @@
+@startuml uno_component_diagram
+!theme plain
+skinparam componentStyle uml2
+
+package "UNO Framework" <<Framework>> {
+
+    package "Interface Layer" <<Layer>> {
+        component [AMPL Interface] as AMPL_IF {
+            port "nl files" as nl_port
+        }
+
+        component [C++ API] as CPP_API {
+            port "direct call" as api_port
+        }
+
+        component [Python Bindings] as PY_BIND {
+            port "python call" as py_port
+        }
+    }
+
+    package "Core Optimization" <<Layer>> {
+        component [Uno Main] as UNO_MAIN {
+            port "solver interface" as solver_port
+        }
+
+        component [Algorithm Manager] as ALGO_MGR {
+            port "algorithm selection" as algo_port
+        }
+
+        database "Options Store" as OPTIONS {
+            port "configuration" as config_port
+        }
+    }
+
+    package "Optimization Algorithms" <<Layer>> {
+        component [Interior Point] as IPM
+        component [SQP] as SQP
+        component [Trust Region] as TR
+        component [Filter SLP] as FSLP
+    }
+
+    package "Algorithm Components" <<Layer>> {
+        frame "Ingredients" {
+            component [Globalization] as GLOB {
+                [Line Search]
+                [Trust Region]
+                [Filter]
+            }
+
+            component [Regularization] as REG {
+                [Primal]
+                [Primal-Dual]
+                [Inertia-based]
+            }
+
+            component [Hessian Models] as HESS {
+                [Exact]
+                [LBFGS]
+                [Gauss-Newton]
+            }
+
+            component [Constraint Handling] as CONS {
+                [Relaxation]
+                [Penalty]
+                [Augmented Lagrangian]
+            }
+        }
+
+        component [Subproblem Formulation] as SUBPROB {
+            port "KKT system" as kkt_port
+        }
+    }
+
+    package "Linear Algebra" <<Layer>> {
+        component [Sparse Matrix] as SPARSE {
+            [COO Format]
+            [CSR Format]
+            [Symbolic Operations]
+        }
+
+        component [Linear Solver Manager] as LIN_MGR {
+            port "solver selection" as lin_select
+        }
+
+        frame "Direct Solvers" {
+            component [MUMPS] as MUMPS
+            component [MA27/MA57] as HSL
+            component [Eigen] as EIGEN
+        }
+
+        frame "Iterative Solvers" {
+            component [CG] as CG
+            component [GMRES] as GMRES
+        }
+
+        component [QP Solvers] as QP {
+            [BQPD]
+            [HiGHS]
+        }
+    }
+
+    package "Utilities" <<Layer>> {
+        component [Logger] as LOG
+        component [Statistics] as STATS
+        component [Timer] as TIMER
+        component [Memory Manager] as MEM
+    }
+}
+
+' Connections between layers
+nl_port --> solver_port : load problem
+api_port --> solver_port : direct call
+py_port --> solver_port : python interface
+
+solver_port --> algo_port : select algorithm
+config_port --> algo_port : apply options
+
+ALGO_MGR --> IPM : create
+ALGO_MGR --> SQP : create
+ALGO_MGR --> TR : create
+ALGO_MGR --> FSLP : create
+
+IPM --> GLOB : use
+IPM --> REG : use
+IPM --> HESS : use
+IPM --> CONS : use
+SQP --> GLOB : use
+SQP --> HESS : use
+TR --> GLOB : use
+TR --> SUBPROB : use
+
+SUBPROB --> kkt_port : build system
+kkt_port --> lin_select : solve
+
+LIN_MGR --> MUMPS : select
+LIN_MGR --> HSL : select
+LIN_MGR --> EIGEN : select
+LIN_MGR --> CG : select
+LIN_MGR --> GMRES : select
+
+MUMPS --> SPARSE : use
+HSL --> SPARSE : use
+EIGEN --> SPARSE : use
+
+IPM --> QP : for QP subproblems
+TR --> QP : for TR subproblems
+
+' All components use utilities
+IPM ..> LOG : log
+SQP ..> LOG : log
+TR ..> LOG : log
+GLOB ..> STATS : record
+REG ..> STATS : record
+LIN_MGR ..> TIMER : measure
+SPARSE ..> MEM : allocate
+
+@enduml

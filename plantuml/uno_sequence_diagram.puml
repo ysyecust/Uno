@@ -1,0 +1,102 @@
+@startuml uno_sequence_diagram
+!theme plain
+skinparam sequenceMessageAlign center
+
+actor User
+participant "AMPL\nInterface" as AMPL
+participant "Uno\nSolver" as Uno
+participant "Optimization\nAlgorithm" as Algo
+participant "Subproblem\nSolver" as SubSolver
+participant "Linear\nSolver" as LinSolver
+participant "Globalization\nMechanism" as Glob
+
+User -> AMPL : 提供模型文件\n(.nl 文件)
+activate AMPL
+AMPL -> AMPL : 解析模型
+AMPL -> Uno : 创建 Model 对象
+deactivate AMPL
+
+activate Uno
+Uno -> Uno : 读取配置选项
+Uno -> Uno : 选择优化算法
+Uno -> Algo : 初始化算法
+activate Algo
+
+loop 迭代直到收敛
+    Algo -> Algo : 评估当前点
+    note right: f(x), ∇f(x), c(x), ∇c(x), H(x,λ)
+
+    Algo -> SubSolver : 构建子问题
+    activate SubSolver
+
+    SubSolver -> SubSolver : 组装 KKT 系统
+    note right
+        [H   -Jᵀ] [Δx]   [∇L]
+        [-J   0 ] [Δλ] = [c ]
+    end note
+
+    SubSolver -> LinSolver : 符号分析
+    activate LinSolver
+    LinSolver -> LinSolver : 分析稀疏结构
+    LinSolver --> SubSolver : 返回结构
+    deactivate LinSolver
+
+    SubSolver -> LinSolver : 数值分解
+    activate LinSolver
+
+    alt 分解成功
+        LinSolver -> LinSolver : LDLᵀ/LU 分解
+        LinSolver -> LinSolver : 计算惯性
+    else 分解失败
+        LinSolver -> LinSolver : 应用正则化
+        LinSolver -> LinSolver : 重新分解
+    end
+
+    LinSolver --> SubSolver : 返回分解结果
+    deactivate LinSolver
+
+    SubSolver -> LinSolver : 求解线性系统
+    activate LinSolver
+    LinSolver -> LinSolver : 前向/后向替换
+    LinSolver --> SubSolver : 返回解 (Δx, Δλ)
+    deactivate LinSolver
+
+    SubSolver --> Algo : 返回搜索方向
+    deactivate SubSolver
+
+    Algo -> Glob : 全局化步长
+    activate Glob
+
+    alt 线搜索
+        Glob -> Glob : Armijo 条件
+        Glob -> Glob : 回溯搜索
+    else 信赖域
+        Glob -> Glob : 计算比率 ρ
+        Glob -> Glob : 调整半径
+    else 滤波器
+        Glob -> Glob : 检查 (h, f) 对
+        Glob -> Glob : 更新滤波器
+    end
+
+    Glob --> Algo : 返回步长 α
+    deactivate Glob
+
+    Algo -> Algo : 更新迭代点
+    note right: x ← x + α·Δx
+
+    Algo -> Algo : 检查收敛
+    note right
+        ||c(x)|| < ε_feas
+        ||∇L|| < ε_opt
+        complementarity < ε_comp
+    end note
+end
+
+Algo --> Uno : 返回优化结果
+deactivate Algo
+
+Uno -> Uno : 生成报告
+Uno --> User : 输出结果
+deactivate Uno
+
+@enduml

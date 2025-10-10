@@ -1,0 +1,185 @@
+@startuml uno_activity_diagram
+!theme plain
+skinparam activityBackgroundColor #F0F0F0
+skinparam activityBorderColor #333333
+
+start
+
+:输入优化问题;
+note right
+  - AMPL .nl 文件
+  - 或直接 C++ API
+end note
+
+:解析问题结构;
+partition "预处理阶段" {
+    :识别变量和约束;
+    :检测问题类型;
+    note right
+      - LP/QP/NLP
+      - 凸/非凸
+      - 约束类型
+    end note
+    :应用预设配置;
+    :缩放和规范化;
+}
+
+partition "初始化阶段" {
+    :选择优化算法;
+    note left
+      基于问题特征:
+      - 内点法 (大规模)
+      - SQP (中等规模)
+      - 信赖域 (非凸)
+    end note
+
+    :初始化数据结构;
+    fork
+        :分配稀疏矩阵;
+    fork again
+        :初始化工作空间;
+    fork again
+        :设置初始点;
+    end fork
+
+    :线性求解器符号分析;
+}
+
+partition "主优化循环" {
+    repeat
+        :评估函数和导数;
+        fork
+            :计算 f(x);
+        fork again
+            :计算 ∇f(x);
+        fork again
+            :计算 c(x);
+        fork again
+            :计算 J(x);
+        fork again
+            :计算 H(x,λ);
+        end fork
+
+        partition "子问题求解" {
+            :构建 KKT 系统;
+
+            if (需要正则化?) then (是)
+                :应用正则化;
+                note right
+                  H ← H + δI
+                  根据惯性调整 δ
+                end note
+            else (否)
+            endif
+
+            :数值分解;
+
+            if (分解成功?) then (否)
+                :增加正则化;
+                :重新分解;
+            else (是)
+            endif
+
+            :检查惯性;
+
+            if (惯性正确?) then (否)
+                :惯性修正;
+                note left
+                  调整正则化参数
+                  使惯性满足要求
+                end note
+                :重新分解;
+            else (是)
+            endif
+
+            :求解线性系统;
+            :得到搜索方向 d;
+        }
+
+        partition "全局化" {
+            :选择全局化策略;
+            if (策略类型?) then (线搜索)
+                :计算初始步长;
+                while (不满足 Armijo?) is (是)
+                    :回溯;
+                    :α ← β·α;
+                endwhile (否)
+                :接受步长;
+            elseif (策略类型?) then (信赖域)
+                :计算比率 ρ;
+                if (ρ > η₁) then (接受)
+                    :接受步;
+                    if (ρ > η₂) then (很好)
+                        :扩大信赖域;
+                    endif
+                else (拒绝)
+                    :缩小信赖域;
+                endif
+            else (滤波器)
+                :计算 (h, f);
+                if (滤波器接受?) then (是)
+                    :更新滤波器;
+                else (否)
+                    :调整步长;
+                endif
+            endif
+        }
+
+        :更新迭代点;
+        note right
+          x_{k+1} = x_k + α·d
+          λ_{k+1} = λ_k + α·d_λ
+        end note
+
+        partition "收敛检查" {
+            :计算收敛指标;
+            fork
+                :原始可行性 ||c(x)||;
+            fork again
+                :对偶可行性 ||∇L||;
+            fork again
+                :互补性 xᵀz;
+            fork again
+                :KKT 误差;
+            end fork
+        }
+
+        if (收敛?) then (是)
+            :记录成功;
+            break
+        else (否)
+            if (达到最大迭代?) then (是)
+                :记录失败;
+                break
+            else (否)
+            endif
+        endif
+
+        :更新算法参数;
+        note left
+          - 障碍参数 μ
+          - 罚参数
+          - 信赖域半径
+        end note
+
+    repeat while (继续迭代)
+}
+
+partition "后处理阶段" {
+    :恢复原始变量;
+    :计算对偶变量;
+    :生成统计报告;
+    :清理内存;
+}
+
+:输出结果;
+note right
+  - 最优解 x*
+  - 最优值 f(x*)
+  - 乘子 λ*
+  - 统计信息
+end note
+
+stop
+
+@enduml
