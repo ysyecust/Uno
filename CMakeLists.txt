@@ -11,7 +11,7 @@ endif()
 ######################
 
 # define the project
-project(Uno VERSION 2.2.0
+project(Uno VERSION 2.2.1
         DESCRIPTION "Uno (Unifying Nonlinear Optimization)"
         LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
@@ -58,6 +58,7 @@ set(DIRECTORIES uno ${CMAKE_BINARY_DIR}/include)
 
 # source files
 file(GLOB UNO_SOURCE_FILES
+   interfaces/C/Uno_C_API.cpp
    uno/Uno.cpp
    uno/ingredients/constraint_relaxation_strategies/*.cpp
    uno/ingredients/globalization_mechanisms/*.cpp
@@ -77,7 +78,6 @@ file(GLOB UNO_SOURCE_FILES
    uno/optimization/*.cpp
    uno/options/*.cpp
    uno/tools/*.cpp
-   bindings/C/Uno_C_API.cpp
 )
 
 # unit test source files
@@ -279,7 +279,7 @@ if(BUILD_STATIC_LIBS)
    target_include_directories(uno_static PUBLIC ${DIRECTORIES})
    target_link_libraries(uno_static PUBLIC ${LIBRARIES} ${FORTRAN_LIBS})
    set_target_properties(uno_static PROPERTIES OUTPUT_NAME "uno" POSITION_INDEPENDENT_CODE ON)
-   set_target_properties(uno_static PROPERTIES PUBLIC_HEADER "bindings/C/Uno_C_API.h")
+   set_target_properties(uno_static PROPERTIES PUBLIC_HEADER "interfaces/C/Uno_C_API.h")
 endif()
 
 if(BUILD_SHARED_LIBS)
@@ -287,7 +287,7 @@ if(BUILD_SHARED_LIBS)
    target_include_directories(uno_shared PUBLIC ${DIRECTORIES})
    target_link_libraries(uno_shared PUBLIC ${LIBRARIES} ${FORTRAN_LIBS})
    set_target_properties(uno_shared PROPERTIES OUTPUT_NAME "uno")
-   set_target_properties(uno_shared PROPERTIES PUBLIC_HEADER "bindings/C/Uno_C_API.h")
+   set_target_properties(uno_shared PROPERTIES PUBLIC_HEADER "interfaces/C/Uno_C_API.h")
 endif()
 
 if(BUILD_STATIC_LIBS)
@@ -306,7 +306,7 @@ endif()
 find_library(AMPLSOLVER amplsolver)
 if(AMPLSOLVER)
    message(STATUS "Found amplsolver")
-   add_executable(uno_ampl EXCLUDE_FROM_ALL bindings/AMPL/AMPLModel.cpp bindings/AMPL/uno_ampl.cpp)
+   add_executable(uno_ampl EXCLUDE_FROM_ALL interfaces/AMPL/AMPLModel.cpp interfaces/AMPL/uno_ampl.cpp)
    target_include_directories(uno_ampl PUBLIC ${DIRECTORIES})
    target_link_libraries(uno_ampl PUBLIC ${DEFAULT_UNO_LIB} ${AMPLSOLVER} ${LIBRARIES} ${CMAKE_DL_LIBS} ${FORTRAN_LIBS})
    add_definitions("-D HAS_AMPLSOLVER")
@@ -328,9 +328,9 @@ if(pybind11_DIR)
    endif()
    
    file(GLOB PYTHON_MODULE_FILES
-      bindings/Python/cpp_classes/*.cpp
-      bindings/Python/python_modules/*.cpp
-      bindings/Python/unopy.cpp
+      interfaces/Python/cpp_classes/*.cpp
+      interfaces/Python/python_modules/*.cpp
+      interfaces/Python/unopy.cpp
    )
 
    add_definitions("-D PYBIND11_DETAILED_ERROR_MESSAGES")
